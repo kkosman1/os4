@@ -12,8 +12,8 @@ string SEARCH_FILE="Search.txt";
 string SITE_FILE="Site.txt";
 
 void parseString(string);
-vector<string> getTerms(string);
-
+vector<string> getSearchTerms(string);
+vector<string> getSiteTerms(string);
 
 int main(int argc, char* argv[]){
 	string configFile;
@@ -38,12 +38,12 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	vector<string> searchTerms=getTerms(SEARCH_FILE);
+	vector<string> searchTerms=getSearchTerms(SEARCH_FILE);
 	if (searchTerms.size()==0){
 		cout << "Error: invalid search file." << endl;
 		return 1;
 	}
-	vector<string> siteTerms=getTerms(SITE_FILE);
+	vector<string> siteTerms=getSiteTerms(SITE_FILE);
 	if (siteTerms.size()==0){
 		cout << "Error: invalid site file." << endl;
 		return 1;
@@ -71,7 +71,7 @@ void parseString(string line){
 		cout << "Warning: unknown parameter." << endl;
 }
 
-vector<string> getTerms(string filename){
+vector<string> getSearchTerms(string filename){
 	string word;
 	vector<string> terms;
 
@@ -79,6 +79,23 @@ vector<string> getTerms(string filename){
 	if(file.is_open()){
 		while(getline(file, word)){
 			if (word.find(",")==string::npos){
+				terms.push_back(word);
+			}
+		}
+	}
+	return terms;
+}
+
+vector<string> getSiteTerms(string filename){
+	string word;
+	vector<string> terms;
+	string substring; //look at the first 7 letters to see if they are http
+                
+	ifstream file(filename.c_str());
+	if(file.is_open()){
+		while(getline(file, word)){
+			string hello = word.substr(0, 7).c_str();
+			if (word.length() > 7 && strcmp(word.substr(0, 7).c_str(), "http://")==0){
 				terms.push_back(word);
 			}
 		}
