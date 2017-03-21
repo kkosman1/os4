@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <curl/curl.h>
+#include "getinmemory.c"
  
 int main(void){
 	CURL *curl;
@@ -18,5 +19,4 @@ int main(void){
 		}
 	}
 	return 0;
-}
-                 
+}                
