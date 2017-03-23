@@ -18,7 +18,6 @@ void print(vector<string> searchWords, vector<string> siteTerms){
 	string searchTerm="Notre";
 	int counter=0;
 	CURL *curl;
-	CURLcode res;
 	string readBuffer;
 	curl = curl_easy_init();
 	string website="https://www.nd.edu/faith-and-service/faith-in-the-academy/"; 
@@ -26,8 +25,8 @@ void print(vector<string> searchWords, vector<string> siteTerms){
 	myfile.open("example.csv");
 	myfile << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
 
-	for (int k=0; k<siteTerms.size(); k++){	
-		for(int j=0; j<searchWords.size(); j++){
+	for (unsigned int k=0; k<siteTerms.size(); k++){	
+		for(unsigned int j=0; j<searchWords.size(); j++){
 			if(curl) {
 				curl_easy_setopt(curl, CURLOPT_URL, siteTerms[k].c_str());
 				curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
