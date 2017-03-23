@@ -15,30 +15,35 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
 }
 
 void getResults(vector<string> searchWords, vector<string> siteTerms){
-	string searchTerm="Notre";
 	int counter=0;
 	CURL *curl;
 	string readBuffer;
-	curl = curl_easy_init();
-	string website="https://www.nd.edu/faith-and-service/faith-in-the-academy/"; 
+	CURLcode res;
+	
 	ofstream myfile;
 	myfile.open("example.csv");
 	myfile << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
 
 	for (unsigned int k=0; k<siteTerms.size(); k++){	
-		for(unsigned int j=0; j<searchWords.size(); j++){
-			if(curl) {
-				curl_easy_setopt(curl, CURLOPT_URL, siteTerms[k].c_str());
-				curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-				curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-				curl_easy_perform(curl);
-				curl_easy_cleanup(curl);
-				size_t nPos = readBuffer.find(searchTerm, 0); // first occurrence
+		readBuffer.clear();
+		curl = curl_easy_init();
+		if(curl) {
+			curl_easy_setopt(curl, CURLOPT_URL, siteTerms[k].c_str());
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		
+			res=curl_easy_perform(curl);
+			/* Check for errors */ 
+		        if(res != CURLE_OK)
+				fprintf(stderr, "curl_easy_perform() failed: %s\n",
+				curl_easy_strerror(res));
+			curl_easy_cleanup(curl);
+			for (unsigned int j=0; j<searchWords.size(); j++){
+				size_t nPos = readBuffer.find(searchWords[j], 0); // first occurrence
 				while(nPos != string::npos){
 					counter++;
 					nPos = readBuffer.find(searchWords[j], nPos+1);
 				}
-		
 				char *date;
 				time_t timer;
 				timer=time(NULL);	
@@ -46,8 +51,9 @@ void getResults(vector<string> searchWords, vector<string> siteTerms){
 				date[strlen(date) - 1] = '\0';	
 
 				myfile << date << "," << searchWords[j] << "," << siteTerms[k] << "," << counter << endl;
-				myfile.close();
+				counter=0;
 			}
-		}		
+		}
 	}
+	myfile.close();
 }

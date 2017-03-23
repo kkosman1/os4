@@ -80,7 +80,7 @@ vector<string> getSearchTerms(string filename){
 	ifstream file(filename.c_str());
 	if(file.is_open()){
 		while(getline(file, word)){
-			if (word.find(",")==string::npos){
+			if (word.find(",")==string::npos && !word.empty()){
 				terms.push_back(word);
 			}
 		}
