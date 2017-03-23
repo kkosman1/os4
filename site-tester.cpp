@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <vector>
-#include "curl.cpp"
+#include "curl.h"
 using namespace std;
 
 string PERIOD_FETCH="180";
