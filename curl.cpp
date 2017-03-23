@@ -14,7 +14,7 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
 	return size * nmemb;
 }
 
-void print(vector<string> searchWords, vector<string> siteTerms){
+void getResults(vector<string> searchWords, vector<string> siteTerms){
 	string searchTerm="Notre";
 	int counter=0;
 	CURL *curl;
