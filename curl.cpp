@@ -31,7 +31,7 @@ void print(vector<string> searchWords, vector<string> siteTerms){
 				curl_easy_setopt(curl, CURLOPT_URL, siteTerms[k].c_str());
 				curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
 				curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-				res = curl_easy_perform(curl);
+				curl_easy_perform(curl);
 				curl_easy_cleanup(curl);
 				size_t nPos = readBuffer.find(searchTerm, 0); // first occurrence
 				while(nPos != string::npos){
