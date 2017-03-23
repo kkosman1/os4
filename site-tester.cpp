@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <vector>
+#include "curl.cpp"
 using namespace std;
 
 string PERIOD_FETCH="180";
@@ -48,6 +49,7 @@ int main(int argc, char* argv[]){
 		cout << "Error: invalid site file." << endl;
 		return 1;
 	}
+	getResults(searchTerms, siteTerms);
 	return 0;
 }
 
