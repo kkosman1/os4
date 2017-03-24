@@ -19,10 +19,6 @@ void getResults(vector<string> searchWords, vector<string> siteTerms){
 	CURL *curl;
 	string readBuffer;
 	CURLcode res;
-	
-	ofstream myfile;
-	myfile.open("example.csv");
-	myfile << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
 
 	for (unsigned int k=0; k<siteTerms.size(); k++){	
 		readBuffer.clear();
