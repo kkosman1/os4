@@ -11,15 +11,18 @@
 #include <vector>
 #include <queue> 
 #include <pthread.h>
+#include <unistd.h>
 
 using namespace std;
 
+// Global Variables
 int PERIOD_FETCH=180;
 int NUM_FETCH=1;
 int NUM_PARSE=1;
 string SEARCH_FILE="Search.txt";
 string SITE_FILE="Site.txt";
 int BATCH=1;
+fstream MYFILE;
 queue<string> SITES;
 vector<string> SEARCHWORDS;
 queue<string> FETCH;
@@ -28,6 +31,12 @@ pthread_cond_t fetchCond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t parseCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t fetchMutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Prototypes
+void startThreads(int);
+void initializeFile();
+static size_t WriteCallback(void *, size_t, size_t, void *);
+void getSiteData();
+void getSearchData();
 void parseString(string);
 void getSearchTerms(string);
 void getSiteTerms(string);
@@ -36,7 +45,7 @@ struct parseStruct{
 	string site;
 	string siteData;
 	string searchWord;
-	string date;
+	char* date;
 };
 
 int main(int argc, char* argv[]){
@@ -73,7 +82,7 @@ int main(int argc, char* argv[]){
 	}
 	initializeFile(); //intiailize columns in file	
 	//Continuously run the program until control-C
-	signal(SIGALRM, &startThreads, NULL);
+	signal(SIGALRM, startThreads);
 	while(1){
 		alarm(PERIOD_FETCH);
 		BATCH++;
@@ -81,13 +90,13 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
-void startThreads(){
+void startThreads(int sig){
 	FETCH=SITES; //reset queue
 	initializeFile();
 
 	pthread_mutex_lock(&fetchMutex);
-        while(!fetch){
-                pthread_cond_wait(&fetch, &fetchMutex);
+        while(!fetchCond){
+                pthread_cond_wait(&fetchCond, &fetchMutex);
         }
         pthread_mutex_unlock(&fetchMutex);
 
@@ -97,9 +106,7 @@ void startThreads(){
 
 
 
-	allowFetch();
-	siteCounter=0;
-	pthread_t fetchThreads[NUM_FETCH];
+/*	pthread_t fetchThreads[NUM_FETCH];
 	pthread_t parseThreads[NUM_PARSE];
 
 	struct siteArgument args[siteTerms.size()];
@@ -113,22 +120,23 @@ void startThreads(){
 			pthread_join(fetchThreads[i], NULL);
 		}
 	}
+*/
 }
 
+//Convert to Cstring
 static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp){
 	((string*)userp)->append((char*)contents, size * nmemb);
 	return size * nmemb;
 }
                 
 void initializeFile(){
-	ofstream myfile;
-	myfile.open(BATCH+".csv");
-	myfile << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
-	myfile.close();
+	MYFILE.open(BATCH+".csv", fstream::out | fstream::app);
+	MYFILE << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
 }
 
-void getSiteData(void *){
-	string site=FETCH.pop_front();
+void getSiteData(){
+	string site=FETCH.front();
+	FETCH.pop();
 	struct parseStruct args;
 
         time_t timer;
@@ -154,14 +162,16 @@ void getSiteData(void *){
 	}
 	args.site=site;
 
-	for (i=0;i<SEARCHWORDS.size();i++){
+	for (unsigned int i=0;i<SEARCHWORDS.size();i++){
 		args.searchWord=SEARCHWORDS[i];
-		PARSE.append(args);
+		PARSE.push(args);
 	}
 }
 
 void getSearchData(){
-	struct parseStruct args=PARSE.pop_front();
+
+	struct parseStruct args=PARSE.front();
+	PARSE.pop();
 	int counter=0;
 
 	size_t nPos = args.siteData.find(args.searchWord, 0); // first occurrence
@@ -169,7 +179,7 @@ void getSearchData(){
 		counter++;
 		nPos = args.siteData.find(args.searchWord, nPos+1);
 	}
-	myfile << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
+	MYFILE << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
 }
 
 void parseString(string line){
@@ -192,7 +202,7 @@ void parseString(string line){
 		cout << "Warning: unknown parameter." << endl;
 }
 
-vector<string> getSearchTerms(string filename){
+void getSearchTerms(string filename){
 	string word;
 
 	ifstream file(filename.c_str());
@@ -214,7 +224,7 @@ void getSiteTerms(string filename){
 		while(getline(file, word)){
 			string hello = word.substr(0, 7).c_str();
 			if (word.length() > 7 && strcmp(word.substr(0, 7).c_str(), "http://")==0){
-				SITES.append(word);
+				SITES.push(word);
 			}
 		}
 	}
