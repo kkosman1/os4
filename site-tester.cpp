@@ -16,12 +16,13 @@
 using namespace std;
 
 // Global Variables
+int cont=1;
 int PERIOD_FETCH=180;
 int NUM_FETCH=1;
 int NUM_PARSE=1;
 string SEARCH_FILE="Search.txt";
 string SITE_FILE="Site.txt";
-int BATCH=1;
+int BATCH=0;
 fstream MYFILE;
 queue<string> SITES;
 vector<string> SEARCHWORDS;
@@ -30,9 +31,11 @@ queue<struct parseStruct> PARSE;
 pthread_cond_t fetchCond = PTHREAD_COND_INITIALIZER; 
 pthread_cond_t parseCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t fetchMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t parseMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Prototypes
-void startThreads(int);
+void interruptHandler(int);
+void fillFetchQueue(int);
 void initializeFile();
 static size_t WriteCallback(void *, size_t, size_t, void *);
 void getSiteData();
@@ -82,45 +85,44 @@ int main(int argc, char* argv[]){
 	}
 	initializeFile(); //intiailize columns in file	
 	//Continuously run the program until control-C
-	signal(SIGALRM, startThreads);
-	while(1){
+	signal(SIGALRM, fillFetchQueue);
+	signal(SIGHUP, interruptHandler);
+	while(cont){
 		alarm(PERIOD_FETCH);
-		BATCH++;
+		initializeFile();
+
+        	pthread_mutex_lock(&fetchMutex);
+        	while(FETCH.empty()){
+        	        pthread_cond_wait(&fetchCond, &fetchMutex);
+        	}
+        	pthread_cond_signal(&parseCond);
+        	pthread_mutex_unlock(&fetchMutex);
+
+
+        	// Fill PARSE structs
+        	 pthread_t fetchThreads[NUM_FETCH];
+        	// for
+        	//	pthread_create(&fetchThreads[i], NULL, getSiteData, (void *));
+        
+        
+        	pthread_mutex_lock(&parseMutex);
+        	while(PARSE.empty()){
+        		pthread_cond_wait(&parseCond, &parseMutex);
+        	}
+        	//        pthread_cond_signal(&
+        	pthread_mutex_unlock(&fetchMutex);
+		
 	}
 	return 0;
 }
 
-void startThreads(int sig){
-	FETCH=SITES; //reset queue
-	initializeFile();
+void interruptHandler(int sig){
+	cont=0;
+}
 
-	pthread_mutex_lock(&fetchMutex);
-        while(!fetchCond){
-                pthread_cond_wait(&fetchCond, &fetchMutex);
-        }
-        pthread_mutex_unlock(&fetchMutex);
-
-
-
-
-
-
-
-/*	pthread_t fetchThreads[NUM_FETCH];
-	pthread_t parseThreads[NUM_PARSE];
-
-	struct siteArgument args[siteTerms.size()];
-	while(!sites.empty()){
-		for (int i=0; i<NUM_FETCH; i++){
-			args[siteCounter].site=sites.pop_front();
-			pthread_create(&fetchThreads[i], NULL, getSiteData, (void *));
-			siteCounter++;
-		}
-		for (int i=0; i<NUM_FETCH; i++){
-			pthread_join(fetchThreads[i], NULL);
-		}
-	}
-*/
+void fillFetchQueue(int sig){
+	BATCH++;
+	FETCH=SITES;
 }
 
 //Convert to Cstring
