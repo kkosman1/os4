@@ -14,18 +14,30 @@
 
 using namespace std;
 
-string PERIOD_FETCH="180";
-string NUM_FETCH="1";
-string NUM_PARSE="1";
+int PERIOD_FETCH=180;
+int NUM_FETCH=1;
+int NUM_PARSE=1;
 string SEARCH_FILE="Search.txt";
 string SITE_FILE="Site.txt";
-pthread_cond_t fetch = PTHREAD_COND_INITIALIZER; 
-pthread_cond_t parse = PTHREAD_COND_INITIALIZER;
+int BATCH=1;
+queue<string> SITES;
+vector<string> SEARCHWORDS;
+queue<string> FETCH;
+queue<struct parseStruct> PARSE;
+pthread_cond_t fetchCond = PTHREAD_COND_INITIALIZER; 
+pthread_cond_t parseCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t fetchMutex = PTHREAD_MUTEX_INITIALIZER;
 
 void parseString(string);
-vector<string> getSearchTerms(string);
-vector<string> getSiteTerms(string);
+void getSearchTerms(string);
+void getSiteTerms(string);
+
+struct parseStruct{
+	string site;
+	string siteData;
+	string searchWord;
+	string date;
+};
 
 int main(int argc, char* argv[]){
 	string configFile;
@@ -49,35 +61,56 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	vector<string> searchTerms=getSearchTerms(SEARCH_FILE);
-	if (searchTerms.size()==0){
+	getSearchTerms(SEARCH_FILE);
+	if (SEARCHWORDS.empty()){
 		cout << "Error: invalid search file." << endl;
 		return 1;
 	}
-	vector<string> siteTerms=getSiteTerms(SITE_FILE);
-	if (siteTerms.size()==0){
+	getSiteTerms(SITE_FILE);
+	if (SITES.empty()){
 		cout << "Error: invalid site file." << endl;
 		return 1;
 	}
-	pthread_t fetchThreads[NUM_FETCH];
-	pthread_t parseThreads[NUM_PARSE];
 	initializeFile(); //intiailize columns in file	
 	//Continuously run the program until control-C
+	signal(SIGALRM, &startThreads, NULL);
 	while(1){
-		signal(SIGALRM, &startThreads, NULL); 
-		alarm(PERIOD_FETCH); 
+		alarm(PERIOD_FETCH);
+		BATCH++;
 	}
 	return 0;
 }
 
-void startThreads(vector<string> siteTerms, vector<string> searchTerms){
+void startThreads(){
+	FETCH=SITES; //reset queue
+	initializeFile();
+
+	pthread_mutex_lock(&fetchMutex);
+        while(!fetch){
+                pthread_cond_wait(&fetch, &fetchMutex);
+        }
+        pthread_mutex_unlock(&fetchMutex);
+
+
+
+
+
+
+
 	allowFetch();
-	availableThread=NUM_THREAD; 	
-	
-	for (int i=0; i< siteTerms.size(); i++){
-		if (availalbeThread>0){
-			pthread_create(&fetch[i], NULL, getResults(searchTerms, siteTerms[i]));
-			availableThread--;
+	siteCounter=0;
+	pthread_t fetchThreads[NUM_FETCH];
+	pthread_t parseThreads[NUM_PARSE];
+
+	struct siteArgument args[siteTerms.size()];
+	while(!sites.empty()){
+		for (int i=0; i<NUM_FETCH; i++){
+			args[siteCounter].site=sites.pop_front();
+			pthread_create(&fetchThreads[i], NULL, getSiteData, (void *));
+			siteCounter++;
+		}
+		for (int i=0; i<NUM_FETCH; i++){
+			pthread_join(fetchThreads[i], NULL);
 		}
 	}
 }
@@ -89,31 +122,28 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
                 
 void initializeFile(){
 	ofstream myfile;
-	myfile.open("example.csv");
+	myfile.open(BATCH+".csv");
 	myfile << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
+	myfile.close();
 }
 
-void allowFetch(){
-	pthread_mutex_lock(&fetchMutex);
-	while(!fetch){
-		pthread_cond_wait(&fetch, &fetchMutex);
-	}
-	pthread_mutex_unlock(&fetchMutex);
-}
+void getSiteData(void *){
+	string site=FETCH.pop_front();
+	struct parseStruct args;
 
+        time_t timer;
+        timer=time(NULL);
+        args.date = asctime(localtime(&timer));
+        args.date[strlen(args.date) - 1] = '\0';
 
-void getResults(vector<string> searchWords, string siteTerms){
-	int counter=0;
 	CURL *curl;
-	string readBuffer;
 	CURLcode res;
 
-	readBuffer.clear();
 	curl = curl_easy_init();
 	if(curl) {	
-		curl_easy_setopt(curl, CURLOPT_URL, siteTerms.c_str());
+		curl_easy_setopt(curl, CURLOPT_URL, site.c_str());
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &(args.siteData));
 
 		res=curl_easy_perform(curl);
 		/* Check for errors */
@@ -121,21 +151,25 @@ void getResults(vector<string> searchWords, string siteTerms){
 			fprintf(stderr, "curl_easy_perform() failed: %s\n",
 					curl_easy_strerror(res));
 		curl_easy_cleanup(curl);
-		for (unsigned int j=0; j<searchWords.size(); j++){
-			size_t nPos = readBuffer.find(searchWords[j], 0); // first occurrence
-			while(nPos != string::npos){
-				counter++;
-				nPos = readBuffer.find(searchWords[j], nPos+1);
-			}
-			char *date;
-			time_t timer;
-			timer=time(NULL);
-			date = asctime(localtime(&timer));
-			date[strlen(date) - 1] = '\0';
-			myfile << date << "," << searchWords[j] << "," << siteTerms << "," << counter << endl;
-			counter=0;
-		}
 	}
+	args.site=site;
+
+	for (i=0;i<SEARCHWORDS.size();i++){
+		args.searchWord=SEARCHWORDS[i];
+		PARSE.append(args);
+	}
+}
+
+void getSearchData(){
+	struct parseStruct args=PARSE.pop_front();
+	int counter=0;
+
+	size_t nPos = args.siteData.find(args.searchWord, 0); // first occurrence
+	while(nPos != string::npos){
+		counter++;
+		nPos = args.siteData.find(args.searchWord, nPos+1);
+	}
+	myfile << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
 }
 
 void parseString(string line){
@@ -145,11 +179,11 @@ void parseString(string line){
 	string token = line.substr(0,pos);
 	line.erase(0,pos+1);
 	if (strcmp(token.c_str(), "PERIOD_FETCH")==0)
-		PERIOD_FETCH=line;
-	else if (strcmp(token.c_str(), "NUM_FETCH")==0)
-		NUM_FETCH=line;
-	else if (strcmp(token.c_str(), "NUM_PARSE")==0)
-		NUM_PARSE=line;
+		PERIOD_FETCH=stoi(line);
+	else if (strcmp(token.c_str(), "NUM_FETCH")==0 && line.length()==1 && ((int)line[0]-'0')>=1 && ((int)line[0]-'0')<=8)
+		NUM_FETCH=((int)line[0]-'0');
+	else if (strcmp(token.c_str(), "NUM_PARSE")==0 && line.length()==1 && ((int)line[0]-'0')>=1 && ((int)line[0]-'0')<=8)
+		NUM_PARSE=((int)line[0]-'0');
 	else if (strcmp(token.c_str(), "SEARCH_FILE")==0)
 		SEARCH_FILE=line;
 	else if (strcmp(token.c_str(), "SITE_FILE")==0)
@@ -160,22 +194,19 @@ void parseString(string line){
 
 vector<string> getSearchTerms(string filename){
 	string word;
-	vector<string> terms;
 
 	ifstream file(filename.c_str());
 	if(file.is_open()){
 		while(getline(file, word)){
 			if (word.find(",")==string::npos && !word.empty()){
-				terms.push_back(word);
+				SEARCHWORDS.push_back(word);
 			}
 		}
 	}
-	return terms;
 }
 
-vector<string> getSiteTerms(string filename){
+void getSiteTerms(string filename){
 	string word;
-	vector<string> terms;
 	string substring; //look at the first 7 letters to see if they are http
                 
 	ifstream file(filename.c_str());
@@ -183,9 +214,8 @@ vector<string> getSiteTerms(string filename){
 		while(getline(file, word)){
 			string hello = word.substr(0, 7).c_str();
 			if (word.length() > 7 && strcmp(word.substr(0, 7).c_str(), "http://")==0){
-				terms.push_back(word);
+				SITES.append(word);
 			}
 		}
 	}
-	return terms;
 }
