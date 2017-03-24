@@ -32,14 +32,15 @@ pthread_cond_t fetchCond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t parseCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t fetchMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t parseMutex = PTHREAD_MUTEX_INITIALIZER;
+vector<pthread_t> fetchThreads;
+vector<pthread_t> parseThreads;
 
-// Prototypes
 void interruptHandler(int);
 void fillFetchQueue(int);
 void initializeFile();
 static size_t WriteCallback(void *, size_t, size_t, void *);
-void getSiteData();
-void getSearchData();
+void* getSiteData(void *);
+void* getSearchData(void *);
 void parseString(string);
 void getSearchTerms(string);
 void getSiteTerms(string);
@@ -83,46 +84,49 @@ int main(int argc, char* argv[]){
 		cout << "Error: invalid site file." << endl;
 		return 1;
 	}
-	initializeFile(); //intiailize columns in file	
+	
+	pthread_t temp;
+
+	//Create Threads
+	for (int i=0;i<NUM_FETCH; i++){
+		fetchThreads.push_back(temp);
+		pthread_create(&fetchThreads[i], NULL, &getSiteData, NULL);
+	}
+	for (int i=0;i<NUM_PARSE; i++){
+		parseThreads.push_back(temp);
+		pthread_create(&parseThreads[i], NULL, &getSearchData, NULL);
+	}
+	
 	//Continuously run the program until control-C
 	signal(SIGALRM, fillFetchQueue);
 	signal(SIGHUP, interruptHandler);
 	while(cont){
 		alarm(PERIOD_FETCH);
-		initializeFile();
 
         	pthread_mutex_lock(&fetchMutex);
-        	while(FETCH.empty()){
-        	        pthread_cond_wait(&fetchCond, &fetchMutex);
-        	}
-        	pthread_cond_signal(&parseCond);
-        	pthread_mutex_unlock(&fetchMutex);
+        	pthread_cond_broadcast(&fetchCond);
+		pthread_mutex_unlock(&fetchMutex);
 
-
-        	// Fill PARSE structs
-        	 pthread_t fetchThreads[NUM_FETCH];
-        	// for
-        	//	pthread_create(&fetchThreads[i], NULL, getSiteData, (void *));
-        
-        
         	pthread_mutex_lock(&parseMutex);
-        	while(PARSE.empty()){
-        		pthread_cond_wait(&parseCond, &parseMutex);
-        	}
-        	//        pthread_cond_signal(&
-        	pthread_mutex_unlock(&fetchMutex);
-		
+        	pthread_cond_broadcast(&parseCond);
+             	pthread_mutex_unlock(&fetchMutex);	
 	}
 	return 0;
 }
 
 void interruptHandler(int sig){
+	for (int i=0;i<NUM_FETCH; i++)
+		pthread_join(fetchThreads[i], NULL);
+	for (int i=0;i<NUM_PARSE; i++)
+		pthread_join(parseThreads[i], NULL);
+	
 	cont=0;
 }
 
 void fillFetchQueue(int sig){
 	BATCH++;
 	FETCH=SITES;
+	initializeFile();
 }
 
 //Convert to Cstring
@@ -132,11 +136,17 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
 }
                 
 void initializeFile(){
-	MYFILE.open(BATCH+".csv", fstream::out | fstream::app);
+	string filename = to_string(BATCH) + ".csv";
+	MYFILE.open(filename, fstream::out | fstream::app);
 	MYFILE << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
 }
 
-void getSiteData(){
+void* getSiteData(void *){
+	while(FETCH.empty()){
+		pthread_cond_wait(&fetchCond, &fetchMutex);
+		cout << "hello yo" << endl;
+	}
+	cout <<"hi"<<endl;
 	string site=FETCH.front();
 	FETCH.pop();
 	struct parseStruct args;
@@ -163,15 +173,19 @@ void getSiteData(){
 		curl_easy_cleanup(curl);
 	}
 	args.site=site;
-
+	cout << "hello" << endl;
+	//notifiy parsers when fetch is done, know they can proceed
 	for (unsigned int i=0;i<SEARCHWORDS.size();i++){
 		args.searchWord=SEARCHWORDS[i];
 		PARSE.push(args);
 	}
+	return NULL;
 }
 
-void getSearchData(){
-
+void* getSearchData(void *){
+	while(PARSE.empty()){
+		pthread_cond_wait(&parseCond, &parseMutex);
+	}
 	struct parseStruct args=PARSE.front();
 	PARSE.pop();
 	int counter=0;
@@ -181,7 +195,9 @@ void getSearchData(){
 		counter++;
 		nPos = args.siteData.find(args.searchWord, nPos+1);
 	}
+	cout << "hello" << args.searchWord << endl;
 	MYFILE << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
+	return NULL;
 }
 
 void parseString(string line){
