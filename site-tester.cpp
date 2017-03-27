@@ -24,7 +24,7 @@ string SEARCH_FILE="Search.txt";
 string SITE_FILE="Site.txt";
 int BATCH=0;
 fstream MYFILE;
-queue<string> SITES;
+vector<string> SITES;
 vector<string> SEARCHWORDS;
 queue<string> FETCH;
 queue<struct parseStruct> PARSE;
@@ -118,10 +118,12 @@ void interruptHandler(int sig){
 void fillFetchQueue(int sig){
 	BATCH++;
 	initializeFile();
-	pthread_mutex_lock(&fetchMutex);
-	FETCH=SITES;
-        pthread_mutex_unlock(&fetchMutex);
-	pthread_cond_broadcast(&fetchCond);
+	for (unsigned int i=0;i<SITES.size();i++){
+		pthread_mutex_lock(&fetchMutex);
+		FETCH.push(SITES[i]);
+		pthread_cond_broadcast(&fetchCond);
+		pthread_mutex_unlock(&fetchMutex);
+	}
 	alarm(PERIOD_FETCH);
 }
 
@@ -140,62 +142,67 @@ void initializeFile(){
 }
 
 void* getSiteData(void *){
-	while(FETCH.empty()){
-		pthread_cond_wait(&fetchCond, &fetchMutex);
+	while(cont){
+		while(FETCH.empty()){
+			pthread_cond_wait(&fetchCond, &fetchMutex);
+		}
+		string site=FETCH.front();
+		FETCH.pop();
+		struct parseStruct args;
+
+	        time_t timer;
+	        timer=time(NULL);
+	        args.date = asctime(localtime(&timer));
+	        args.date[strlen(args.date) - 1] = '\0';
+
+		CURL *curl;
+		CURLcode res;
+
+		curl = curl_easy_init();
+		if(curl) {	
+			curl_easy_setopt(curl, CURLOPT_URL, site.c_str());
+			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &(args.siteData));
+	
+			res=curl_easy_perform(curl);
+			/* Check for errors */
+			if(res != CURLE_OK)
+				fprintf(stderr, "curl_easy_perform() failed: %s\n",
+						curl_easy_strerror(res));
+			curl_easy_cleanup(curl);
+		}
+		args.site=site;
+
+		pthread_mutex_lock(&parseMutex);
+		//notifiy parsers when fetch is done, know they can proceed
+	
+		for (unsigned int i=0;i<SEARCHWORDS.size();i++){
+			args.searchWord.clear();
+			args.searchWord=SEARCHWORDS[i];
+			PARSE.push(args);
+		}
+		pthread_mutex_unlock(&parseMutex);
+		pthread_cond_broadcast(&parseCond);
 	}
-	string site=FETCH.front();
-	FETCH.pop();
-	struct parseStruct args;
-
-        time_t timer;
-        timer=time(NULL);
-        args.date = asctime(localtime(&timer));
-        args.date[strlen(args.date) - 1] = '\0';
-
-	CURL *curl;
-	CURLcode res;
-
-	curl = curl_easy_init();
-	if(curl) {	
-		curl_easy_setopt(curl, CURLOPT_URL, site.c_str());
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &(args.siteData));
-
-		res=curl_easy_perform(curl);
-		/* Check for errors */
-		if(res != CURLE_OK)
-			fprintf(stderr, "curl_easy_perform() failed: %s\n",
-					curl_easy_strerror(res));
-		curl_easy_cleanup(curl);
-	}
-	args.site=site;
-
-	pthread_mutex_lock(&parseMutex);
-	//notifiy parsers when fetch is done, know they can proceed
-	for (unsigned int i=0;i<SEARCHWORDS.size();i++){
-		args.searchWord.clear();
-		args.searchWord=SEARCHWORDS[i];
-		PARSE.push(args);
-	}
-	pthread_mutex_unlock(&parseMutex);
-	pthread_cond_broadcast(&parseCond);
 	return NULL;
 }
 
 void* getSearchData(void *){
-	while(PARSE.empty()){
-		pthread_cond_wait(&parseCond, &parseMutex);
-	}
-	struct parseStruct args=PARSE.front();
-	PARSE.pop();
-	int counter=0;
+	while(cont){
+		while(PARSE.empty()){
+			pthread_cond_wait(&parseCond, &parseMutex);
+		}
+		struct parseStruct args=PARSE.front();
+		PARSE.pop();
+		int counter=0;
 
-	size_t nPos = args.siteData.find(args.searchWord, 0); // first occurrence
-	while(nPos != string::npos){
-		counter++;
-		nPos = args.siteData.find(args.searchWord, nPos+1);
+		size_t nPos = args.siteData.find(args.searchWord, 0); // first occurrence
+		while(nPos != string::npos){
+			counter++;
+			nPos = args.siteData.find(args.searchWord, nPos+1);
+		}
+		MYFILE << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
 	}
-	MYFILE << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
 	return NULL;
 }
 
@@ -241,7 +248,7 @@ void getSiteTerms(string filename){
 		while(getline(file, word)){
 			string hello = word.substr(0, 7).c_str();
 			if (word.length() > 7 && strcmp(word.substr(0, 7).c_str(), "http://")==0){
-				SITES.push(word);
+				SITES.push_back(word);
 			}
 		}
 	}
