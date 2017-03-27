@@ -173,6 +173,7 @@ void* getSiteData(void *){
 	pthread_mutex_lock(&parseMutex);
 	//notifiy parsers when fetch is done, know they can proceed
 	for (unsigned int i=0;i<SEARCHWORDS.size();i++){
+		args.searchWord.clear();
 		args.searchWord=SEARCHWORDS[i];
 		PARSE.push(args);
 	}
