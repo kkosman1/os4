@@ -100,17 +100,9 @@ int main(int argc, char* argv[]){
 	//Continuously run the program until control-C
 	signal(SIGALRM, fillFetchQueue);
 	signal(SIGHUP, interruptHandler);
-	while(cont){
-		alarm(PERIOD_FETCH);
+	fillFetchQueue(1);
+	while(cont){}
 
-        	pthread_mutex_lock(&fetchMutex);
-        	pthread_cond_broadcast(&fetchCond);
-		pthread_mutex_unlock(&fetchMutex);
-
-        	pthread_mutex_lock(&parseMutex);
-        	pthread_cond_broadcast(&parseCond);
-             	pthread_mutex_unlock(&fetchMutex);	
-	}
 	return 0;
 }
 
@@ -125,8 +117,12 @@ void interruptHandler(int sig){
 
 void fillFetchQueue(int sig){
 	BATCH++;
-	FETCH=SITES;
 	initializeFile();
+	pthread_mutex_lock(&fetchMutex);
+	FETCH=SITES;
+        pthread_mutex_unlock(&fetchMutex);
+	pthread_cond_broadcast(&fetchCond);
+	alarm(PERIOD_FETCH);
 }
 
 //Convert to Cstring
@@ -136,6 +132,8 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
 }
                 
 void initializeFile(){
+	if (BATCH>1)
+		MYFILE.close();
 	string filename = to_string(BATCH) + ".csv";
 	MYFILE.open(filename, fstream::out | fstream::app);
 	MYFILE << "Time" << "," << "Phrase" << "," << "Website" << "," << "Count" << endl;
@@ -144,9 +142,7 @@ void initializeFile(){
 void* getSiteData(void *){
 	while(FETCH.empty()){
 		pthread_cond_wait(&fetchCond, &fetchMutex);
-		cout << "hello yo" << endl;
 	}
-	cout <<"hi"<<endl;
 	string site=FETCH.front();
 	FETCH.pop();
 	struct parseStruct args;
@@ -173,12 +169,15 @@ void* getSiteData(void *){
 		curl_easy_cleanup(curl);
 	}
 	args.site=site;
-	cout << "hello" << endl;
+
+	pthread_mutex_lock(&parseMutex);
 	//notifiy parsers when fetch is done, know they can proceed
 	for (unsigned int i=0;i<SEARCHWORDS.size();i++){
 		args.searchWord=SEARCHWORDS[i];
 		PARSE.push(args);
 	}
+	pthread_mutex_unlock(&parseMutex);
+	pthread_cond_broadcast(&parseCond);
 	return NULL;
 }
 
@@ -195,7 +194,6 @@ void* getSearchData(void *){
 		counter++;
 		nPos = args.siteData.find(args.searchWord, nPos+1);
 	}
-	cout << "hello" << args.searchWord << endl;
 	MYFILE << args.date << "," << args.searchWord << "," << args.site << "," << counter << endl;
 	return NULL;
 }
